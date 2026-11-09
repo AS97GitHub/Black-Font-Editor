@@ -19,12 +19,6 @@ A visual bitmap font editor for the Xbox game **BLACK**. It allows you to inspec
 
 *All files must be located in the same folder.*
 
-## Screenshot
-
-<p align>
-  <img src="images/screenshot.png">
-</p>
-
 ## Requirements
 * Python 3.8 or later (`tkinter` is included in standard Python distributions).
 * [Pillow](https://python-pillow.org/) library.
@@ -44,3 +38,9 @@ python black_font_editor.py [Big.bin | Small.bin]
 > ⚠️ On Windows, you can use either `python` or `py` to run the script, depending on your Python installation.
 
 > ⚠️: On Linux, you may need to use `python3` instead of `python`.
+
+## Screenshot
+
+<p align>
+  <img src="images/screenshot.png">
+</p>
