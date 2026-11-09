@@ -7,15 +7,21 @@
 
 # Black Font Editor
 
-### A visual font editor for Black.
+A visual bitmap font editor for the Xbox game **BLACK**. It allows you to inspect, edit glyph metrics, and replace texture atlases for `Big.bin` and `Small.bin` files (format `4.1v`).
+
+## Features
+* **Visual Editing:** Move and resize glyph rectangles directly on the texture atlas.
+* **Metrics Editing:** Edit UV coordinates, cell sizes, offsets, and advance widths (in pixels or normalized floats).
+* **Texture Import/Export:** Export the atlas to PNG, or import a new one from PNG/DDS (automatically re-encoded to DXT3/BC2).
+* **Safe Patching:** Preserves all unrecognised bytes, the 128-entry pointer table, and texture headers.
+* **Dark Theme UI:** Built with Tkinter, featuring a modern dark interface.
 
 ## Files
+* `black_font_editor.py` — the main graphical editor (Tkinter GUI).
+* `black_font_format.py` — library for reading/writing the `4.1v` font format and glyph records.
+* `black_texture.py` — DXT1/3/5 codecs and DDS loader used by the editor.
 
-- `conker_glyph_format.py` — library for reading and writing the font format and managing open-addressed character maps (required by the editor)
-- `conker_texture.py` — reads and replaces the texture embedded in the .bin (used by the library and the editor)
-- `conker_glyph_editor.py` — the main graphical editor (tkinter)
-
-All files must be located in the same folder.
+*All files must be located in the same folder.*
 
 ## Screenshot
 
@@ -23,29 +29,22 @@ All files must be located in the same folder.
   <img src="images/screenshot.png">
 </p>
 
-## Installation (Windows)
-
-### Option 1 — Download the executable
-
-Download the latest `.exe` version from the [Releases](https://github.com/AS97GitHub/Conker-Glyph-Editor/releases) page.
-
-> No `python` installation or additional dependencies are required.
+## Requirements
+* Python 3.8 or later (`tkinter` is included in standard Python distributions).
+* [Pillow](https://python-pillow.org/) library.
 
 ### Option 2 — Run from source
 
-1. Make sure Python 3.8 or later is installed (tkinter is included with the standard Windows Python distribution, so no separate installation is required).
-2. Install Pillow:
+Install the required dependency:
+```bash
+pip install Pillow
+```
 
-   ```
-   pip install Pillow
-   ```
-
-## Running
+Run the editor (optionally passing a font file as an argument):
+```bash
+python black_font_editor.py [Big.bin | Small.bin]
+```
 
 > ⚠️ On Windows, you can use either `python` or `py` to run the script, depending on your Python installation.
 
-> ⚠️ On Linux you may need to use `python3` instead of `python`.
-
-```bash
-python conker_glyph_editor.py
-```
+> ⚠️: On Linux, you may need to use `python3` instead of `python`.
