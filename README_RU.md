@@ -20,12 +20,6 @@
 
 *Все файлы должны находиться в одной папке.*
 
-## Скриншот
-
-<p align>
-  <img src="images/screenshot.png">
-</p>
-
 ## Требования
 * Python 3.8 или новее (`tkinter` входит в стандартную поставку Python).
 * Библиотека [Pillow](https://python-pillow.org/).
@@ -44,3 +38,9 @@ python black_font_editor.py [Big.bin | Small.bin]
 > ⚠️ В Windows для запуска скрипта можно использовать `python` или `py` — в зависимости от того, как установлен Python.
 
 > ⚠️ В Linux вместо `python` может потребоваться использовать `python3`.
+
+## Скриншот
+
+<p align>
+  <img src="images/screenshot.png">
+</p>
