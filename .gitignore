@@ -1,0 +1,66 @@
+# =============================================================================
+# Black Font Editor
+# =============================================================================
+
+# --- Python bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Build artifacts (PyInstaller — likely packaging method for .exe) ---
+build/
+dist/
+*.spec
+*.manifest
+*.exe
+
+# --- Python packaging ---
+*.egg-info/
+*.egg
+MANIFEST
+.installed.cfg
+
+# --- Working files (editor input/output data) ---
+# Comment these out if you want to keep test assets in the repo
+*.json
+*.png
+*.dds
+*.tga
+*.bmp
+
+# --- Environment variables and local settings ---
+.env
+.envrc
+
+# --- IDE settings ---
+.idea/
+.vscode/
+.spyderproject
+.ropeproject
+
+# --- Tool caches ---
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+
+# --- Tests and coverage ---
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# --- Logs ---
+*.log
+
+# --- macOS / Windows junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
