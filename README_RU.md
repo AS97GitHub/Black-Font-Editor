@@ -5,24 +5,9 @@
 [![en][badge-en]][vot-readme-en]
 [![ru][badge-ru]][vot-readme-ru]
 
-<table>
-<tr>
-<td width="170">
-
-<p>
-  <img src="resources/icon.ico">
-</p>
-
-</td>
-<td>
-
 # Black Font Editor
 
 ### Визуальный редактор шрифтов для Black.
-
-</td>
-</tr>
-</table>
 
 ## Файлы
 
