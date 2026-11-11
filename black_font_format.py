@@ -36,7 +36,11 @@ def display_character(code: int) -> str:
     if code == 0:
         return "□"
     if code == 0x20:
-        return "␠"
+        return "\u02e2\u1d56"
+    if code == 0xA0:
+        return "\u207f\u1d47\u02e2\u1d56"
+    if code == 0x3000:
+        return "\u2071\u1d48\u02e2\u1d56"
     if 0xD800 <= code <= 0xDFFF:
         return "�"
     character = chr(code)
@@ -58,9 +62,9 @@ class Glyph:
 
     @property
     def label(self) -> str:
-        # The glyph list is intentionally character-first; the U16 code itself
-        # remains editable in the Character property field.
-        return f"{self.index:03d}  {display_character(self.code)}"
+        # Character-first list entry; U+ code in parentheses for quick reading.
+        # The full code remains editable in the Character property field.
+        return f"{self.index:03d}  char={display_character(self.code)}  (U+{self.code:04X})"
 
 
 class BlackFont:

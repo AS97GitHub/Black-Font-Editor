@@ -518,7 +518,7 @@ class BlackFontEditor:
         self.bold_font = setup_bold_font(root, self.ui_font)
         set_dark_titlebar(root)
         _darken_tk_dialog_titlebars(root)
-        self.root.title("BLACK Bitmap Font Editor")
+        self.root.title("BLACK Font Editor")
         self.root.geometry("1200x760")
 
         # Set window icon (optional, won't fail if missing)
@@ -854,7 +854,7 @@ class BlackFontEditor:
         if self.zoom > self._max_zoom():
             self.zoom = self._max_zoom()
             self.zoom_var.set(self.zoom)
-        self.root.title(f"BLACK Bitmap Font Editor — {font.path.name}")
+        self.root.title(f"BLACK Font Editor — {font.path.name}")
         self.info_var.set(
             f"File: {font.path.name}\nAtlas: {font.texture_name} ({font.texture_width}×{font.texture_height})\n"
             f"Format: {FORMAT_NAMES.get(font.texture_format, 'unknown')} (0x{font.texture_format:02X})\nNominal size: {font.nominal_size:.2f}px\n"
@@ -1300,7 +1300,7 @@ class BlackFontEditor:
             return False
         self.font.path = Path(path)             # later "Save (overwrite)" targets this file
         self.dirty = False
-        self.root.title(f"BLACK Bitmap Font Editor — {self.font.path.name}")
+        self.root.title(f"BLACK Font Editor — {self.font.path.name}")
         self.status_var.set(f"Saved {path}")
         return True
 
