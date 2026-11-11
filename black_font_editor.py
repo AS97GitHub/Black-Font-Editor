@@ -632,6 +632,7 @@ class BlackFontEditor:
         tab_width = TAB_WIDTHS.get(font_name, 13)
 
         style = ttk.Style(self.root)
+        style.configure("Hint.TEntry", padding=(3, 1, 42, 1))  # left, top, right, bottom
         style.configure("TNotebook.Tab", width=tab_width, padding=(0, 4, 0, 4), anchor="center")
         style.map("TNotebook.Tab", padding=[("selected", (0, 7, 0, 4))], expand=[("selected", (0, 0, 0, 0))])
 
@@ -691,20 +692,37 @@ class BlackFontEditor:
             ("Cell Height:", "cell_height", False),
             ("Offset X:", "offset_x", False),
             ("Offset Y:", "offset_y", False),
-            ("Advance Width:", "advance", False),
+            ("Advance:", "advance", False),
         )
 
         for label, name, readonly in fields:
             frame = ttk.Frame(props)
             frame.pack(fill=tk.X, pady=(2, 1))
 
-            label_widget = ttk.Label(frame, text=label, width=17, anchor=tk.E)
+            label_widget = ttk.Label(frame, text=label, width=14, anchor=tk.E)
             label_widget.pack(side=tk.LEFT, padx=(0, 2))
             self.property_labels[name] = label_widget
 
-            entry = ttk.Entry(frame, textvariable=self.property_vars[name], width=12)
-            entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
-    
+            if name in ("offset_x", "offset_y"):
+                entry_frame = ttk.Frame(frame)
+                entry_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
+
+                entry = ttk.Entry(entry_frame, textvariable=self.property_vars[name],
+                                  width=12, style="Hint.TEntry")
+                entry.pack(fill=tk.X, expand=True)
+
+                hint_text = "-←/+→" if name == "offset_x" else "-↑/+↓"
+                hint = tk.Label(entry_frame, text=hint_text,
+                                background=PALETTE["field"],
+                                foreground=PALETTE["disabled"],
+                                font=self.ui_font,
+                                borderwidth=0, padx=0, pady=0)
+                hint.place(relx=1.0, x=-4, rely=0.5, anchor="e")
+                hint.bind("<Button-1>", lambda e, ent=entry: ent.focus_set())
+            else:
+                entry = ttk.Entry(frame, textvariable=self.property_vars[name], width=12)
+                entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
+
             if readonly:
                 entry.state(["readonly"])
 
@@ -774,13 +792,13 @@ class BlackFontEditor:
             "pixel_x": "Atlas U:", "pixel_y": "Atlas V:",
             "cell_width": "Cell Width:", "cell_height": "Cell Height:",
             "offset_x": "Offset X:", "offset_y": "Offset Y:",
-            "advance": "Advance Width:",
+            "advance": "Advance:",
         }
         pixel_labels = {
             "pixel_x": "Pixel X:", "pixel_y": "Pixel Y:",
             "cell_width": "Cell Width:", "cell_height": "Cell Height:",
             "offset_x": "Offset X:", "offset_y": "Offset Y:",
-            "advance": "Advance Width:",
+            "advance": "Advance:",
         }
         for name, text in (uv_labels if self.uv_mode_var.get() else pixel_labels).items():
             self.property_labels[name].configure(text=text)
