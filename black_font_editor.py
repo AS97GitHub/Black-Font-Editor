@@ -509,6 +509,9 @@ messagebox = _MessageBoxes()
 filedialog = _FileDialogs()
 
 
+APP_TITLE = "BLACK Font Editor"
+
+
 class BlackFontEditor:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -518,7 +521,7 @@ class BlackFontEditor:
         self.bold_font = setup_bold_font(root, self.ui_font)
         set_dark_titlebar(root)
         _darken_tk_dialog_titlebars(root)
-        self.root.title("BLACK Font Editor")
+        self.root.title(APP_TITLE)
         self.root.geometry("1200x760")
 
         # Set window icon (optional, won't fail if missing)
@@ -802,6 +805,13 @@ class BlackFontEditor:
             "Details were printed to the console.",
         )
 
+    def _update_title(self) -> None:
+        """Window title: app name, plus the open file's name (with extension)."""
+        if self.font is None:
+            self.root.title(APP_TITLE)
+        else:
+            self.root.title(f"{APP_TITLE} \u2014 {self.font.path.name}")
+
     def _mark_modified(self, message: str) -> None:
         self.dirty = True
         self.status_var.set(f"{message} (not saved)")
@@ -854,7 +864,7 @@ class BlackFontEditor:
         if self.zoom > self._max_zoom():
             self.zoom = self._max_zoom()
             self.zoom_var.set(self.zoom)
-        self.root.title(f"BLACK Font Editor — {font.path.name}")
+        self._update_title()
         self.info_var.set(
             f"File: {font.path.name}\nAtlas: {font.texture_name} ({font.texture_width}×{font.texture_height})\n"
             f"Format: {FORMAT_NAMES.get(font.texture_format, 'unknown')} (0x{font.texture_format:02X})\nNominal size: {font.nominal_size:.2f}px\n"
@@ -1300,7 +1310,7 @@ class BlackFontEditor:
             return False
         self.font.path = Path(path)             # later "Save (overwrite)" targets this file
         self.dirty = False
-        self.root.title(f"BLACK Font Editor — {self.font.path.name}")
+        self._update_title()
         self.status_var.set(f"Saved {path}")
         return True
 
