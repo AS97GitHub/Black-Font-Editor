@@ -29,6 +29,11 @@ from black_font_format import BlackFont, Glyph, FORMAT_NAMES
 from black_texture import load_dds_image
 
 
+APP_TITLE = "BLACK Font Editor"
+
+# --- Theme -------------------------------------------------------------
+# One palette for the whole UI (clam theme + classic tk widgets), so that no
+# widget keeps the default white background. Tweak colors here.
 PALETTE = {
     "bg":       "#24292e",   # window / frames
     "fg":       "#d9dcde",   # text
@@ -44,7 +49,8 @@ PALETTE = {
     "tab_active": "#1d2125",   # active tab background
     "button_border_hover": "#58a6ff",   # button border on hover
 }
-HANDLE_SIZE = 6
+
+HANDLE_SIZE = 6          # Size of corner handle box for dragging (in screen pixels)
 DEFAULT_ZOOM = 4
 MIN_ZOOM, MAX_ZOOM = 1, 16
 MAX_DISPLAY_PIXELS = 32_000_000
@@ -55,7 +61,9 @@ MAX_DISPLAY_PIXELS = 32_000_000
 # DecompressionBombError - PIL refusing an absurdly large image.
 EXPECTED_LOAD_ERRORS = (ValueError, OSError, struct.error, Image.DecompressionBombError)
 
-# Font candidates
+# --- Fonts -------------------------------------------------------------
+# Preferred family first, then fallbacks (Windows font -> Linux metric-compatible
+# equivalent).
 UI_FONT_CANDIDATES = (
     "Segoe UI",
     "Ubuntu",
@@ -68,6 +76,9 @@ MONO_FONT_CANDIDATES = (
     "monospace",
 )
 
+# Font used for **bold** fragments in the Help / Info text: (family, weight).
+# "Segoe UI Black" is a separate family (already heavy), so it is used with
+# weight "normal"; Ubuntu and generic sans-serif get a real bold weight.
 BOLD_FONT_CANDIDATES = (
     ("Segoe UI Black", "normal"),
     ("Ubuntu", "bold"),
@@ -507,9 +518,6 @@ class _FileDialogs:
 
 messagebox = _MessageBoxes()
 filedialog = _FileDialogs()
-
-
-APP_TITLE = "BLACK Font Editor"
 
 
 class BlackFontEditor:
