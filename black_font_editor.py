@@ -603,12 +603,12 @@ class BlackFontEditor:
 
         left = ttk.Frame(self.panes, width=224)
         centre = ttk.Frame(self.panes)
-        right = ttk.Frame(self.panes, width=265)
+        right = ttk.Frame(self.panes, width=224)
         left.pack_propagate(False)
         right.pack_propagate(False)
         self._add_pane(left, min_width=150, weight=0)
         self._add_pane(centre, min_width=250, weight=1)
-        self._add_pane(right, min_width=200, weight=0)
+        self._add_pane(right, min_width=150, weight=0)
         self._build_left(left)
         self._build_canvas(centre)
         self._build_right(right)
@@ -699,7 +699,7 @@ class BlackFontEditor:
             frame = ttk.Frame(props)
             frame.pack(fill=tk.X, pady=(2, 1))
 
-            label_widget = ttk.Label(frame, text=label, width=14, anchor=tk.E)
+            label_widget = ttk.Label(frame, text=label, width=12, anchor=tk.E)
             label_widget.pack(side=tk.LEFT, padx=(0, 2))
             self.property_labels[name] = label_widget
 
