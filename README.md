@@ -37,7 +37,7 @@ python black_font_editor.py [Big.bin | Small.bin]
 
 > ⚠️ On Windows, you can use either `python` or `py` to run the script, depending on your Python installation.
 
-> ⚠️: On Linux, you may need to use `python3` instead of `python`.
+> ⚠️ On Linux, you may need to use `python3` instead of `python`.
 
 ## Screenshot
 
