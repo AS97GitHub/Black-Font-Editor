@@ -699,7 +699,7 @@ class BlackFontEditor:
             frame = ttk.Frame(props)
             frame.pack(fill=tk.X, pady=(2, 1))
 
-            label_widget = ttk.Label(frame, text=label, width=12, anchor=tk.E)
+            label_widget = ttk.Label(frame, text=label, width=12, anchor="e")
             label_widget.pack(side=tk.LEFT, padx=(0, 2))
             self.property_labels[name] = label_widget
 
@@ -1054,7 +1054,7 @@ class BlackFontEditor:
             bg_color = self.bg_var.get()
             self.canvas.create_rectangle(0, 0, w * z, h * z, fill=bg_color, outline="", tags="background")
 
-        self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW, tags="atlas")
+        self.canvas.create_image(0, 0, image=self.photo, anchor="nw", tags="atlas")
         self.canvas.configure(scrollregion=(0, 0, w * z, h * z))
 
         # Draw texture border if enabled
