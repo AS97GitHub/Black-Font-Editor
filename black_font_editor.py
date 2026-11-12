@@ -597,8 +597,9 @@ class BlackFontEditor:
 
         ttk.Label(toolbar, text="Zoom:").pack(side=tk.LEFT, padx=(16, 2))
         self.zoom_var = tk.IntVar(value=self.zoom)
-        zoom = ttk.Spinbox(toolbar, from_=MIN_ZOOM, to=MAX_ZOOM, width=2, textvariable=self.zoom_var, command=self.change_zoom)
-        zoom.pack(side=tk.LEFT, padx=(3, 0))
+        zoom = ttk.Spinbox(toolbar, from_=MIN_ZOOM, to=MAX_ZOOM, textvariable=self.zoom_var,
+                            width=2, command=self.change_zoom)
+        zoom.pack(side=tk.LEFT)
         zoom.bind("<Return>", lambda _e: self.change_zoom())
         zoom.bind("<FocusOut>", lambda _e: self.change_zoom())
 
