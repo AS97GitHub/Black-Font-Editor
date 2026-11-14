@@ -181,5 +181,43 @@ class BlackFont:
             self.data.extend(b"\x00" * (end - len(self.data)))
         self.data[self.pixel_offset:end] = payload
 
+    def fix_pointers(self) -> list[str]:
+        """Rebuild the 128-entry glyph pointer table so the game can find every glyph.
+
+        The game looks up a character as:
+            start = u32(font + 0x20 + (ch & 0x7F) * 4)
+            then walks forward by GLYPH_STRIDE until code matches or the
+            sentinel at u32(font + 0x1C) is reached.
+        A glyph is reachable only if its record lies at or after the table entry
+        for (code & 0x7F).  This method moves each table slot back to the
+        earliest matching record when that record is before the current pointer.
+        Only the 4-byte table entries are changed; glyph data is left alone.
+        Returns a list of human-readable change descriptions (empty if nothing
+        needed fixing).
+        """
+        end = self.u32(0x1C)
+        end_index = (end - GLYPH_RECORDS) // GLYPH_STRIDE if end >= GLYPH_RECORDS else -1
+        log: list[str] = []
+        for slot in range(128):
+            wanted = [
+                g.index for g in self.glyphs()
+                if g.code and g.index != end_index and (g.code & 0x7F) == slot
+            ]
+            if not wanted:
+                continue
+            offset = 0x20 + slot * 4
+            current = self.u32(offset)
+            current_index = (current - GLYPH_RECORDS) // GLYPH_STRIDE
+            valid = (
+                GLYPH_RECORDS <= current < end
+                and (current - GLYPH_RECORDS) % GLYPH_STRIDE == 0
+            )
+            first = min(wanted)
+            if not valid or first < current_index:
+                struct.pack_into("<I", self.data, offset, GLYPH_RECORDS + first * GLYPH_STRIDE)
+                old = current_index if valid else "end/none"
+                log.append(f"slot 0x{slot:02X}: record {old} -> {first}")
+        return log
+
     def save(self, path: os.PathLike[str] | str) -> None:
         Path(path).write_bytes(self.data)

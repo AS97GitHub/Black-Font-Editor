@@ -993,11 +993,7 @@ class BlackFontEditor:
         self.glyph_list.delete(0, tk.END)
         for glyph in font.glyphs():
             self.glyph_list.insert(tk.END, glyph.label)
-        self.pointer_list.delete(0, tk.END)
-        for i in range(128):
-            raw, target = font.pointer(i), font.pointer_target(i)
-            suffix = f"glyph {target:03d}" if target is not None else "outside glyph records"
-            self.pointer_list.insert(tk.END, f"{i:03d}: 0x{raw:04X}  → {suffix}")
+        self._refresh_pointer_list()
         if keep_selection:
             self.select_glyph(self.selected_index)      # also redraws the canvas
         else:
@@ -1005,6 +1001,16 @@ class BlackFontEditor:
             self.redraw()
         self.status_var.set(f"Loaded {font.path} — {font.glyph_count} physical glyph records")
         return True
+
+    def _refresh_pointer_list(self) -> None:
+        """Rebuild the pointer table list from the current font data."""
+        if not self.font:
+            return
+        self.pointer_list.delete(0, tk.END)
+        for i in range(128):
+            raw, target = self.font.pointer(i), self.font.pointer_target(i)
+            suffix = f"glyph {target:03d}" if target is not None else "outside glyph records"
+            self.pointer_list.insert(tk.END, f"{i:03d}: 0x{raw:04X}  → {suffix}")
 
     def select_from_list(self, _event=None) -> None:
         selection = self.glyph_list.curselection()
@@ -1404,6 +1410,14 @@ class BlackFontEditor:
 
     # ---- saving ------------------------------------------------------------
 
+    def _fix_pointers_before_save(self) -> str:
+        """Run pointer-table repair and refresh the UI list. Returns a short status note."""
+        log = self.font.fix_pointers()
+        if log:
+            self._refresh_pointer_list()
+            return f" (fixed {len(log)} pointer table entr{'y' if len(log) == 1 else 'ies'})"
+        return ""
+
     def save(self) -> bool:
         if not self.font:
             messagebox.showinfo("No font", "Open a BLACK bitmap font first.")
@@ -1417,12 +1431,13 @@ class BlackFontEditor:
                 "Making a backup copy first is recommended."):
             return False
         try:
+            note = self._fix_pointers_before_save()
             self.font.save(self.font.path)
         except OSError as exc:
             messagebox.showerror("Save error", str(exc))
             return False
         self.dirty = False
-        self.status_var.set(f"Saved {self.font.path}")
+        self.status_var.set(f"Saved {self.font.path}{note}")
         return True
 
     def save_as(self) -> bool:
@@ -1434,6 +1449,7 @@ class BlackFontEditor:
         if not path:
             return False
         try:
+            note = self._fix_pointers_before_save()
             self.font.save(path)
         except OSError as exc:
             messagebox.showerror("Save error", str(exc))
@@ -1441,7 +1457,7 @@ class BlackFontEditor:
         self.font.path = Path(path)             # later "Save (overwrite)" targets this file
         self.dirty = False
         self._update_title()
-        self.status_var.set(f"Saved {path}")
+        self.status_var.set(f"Saved {path}{note}")
         return True
 
     def close(self) -> None:
