@@ -23,7 +23,7 @@ from tkinter import filedialog as _native_filedialog
 from tkinter import messagebox as _native_messagebox
 import tkinter.font as tkfont
 
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageEnhance
 
 from black_font_format import BlackFont, Glyph, FORMAT_NAMES
 from black_texture import load_dds_image
@@ -205,6 +205,15 @@ def setup_theme(root: tk.Tk) -> dict:
                     troughcolor=c["field"], arrowcolor=c["fg"],
                     darkcolor=c["button"], lightcolor=c["button"])
     style.map("TScrollbar", background=[("active", c["active"])])
+
+    # Dark horizontal scale (contrast slider etc.)
+    style.configure("TScale", background=c["bg"], troughcolor=c["field"],
+                    bordercolor=c["border"], darkcolor=c["button"], lightcolor=c["button"],
+                    sliderthickness=14, sliderrelief="flat")
+    style.map("TScale",
+              background=[("active", c["active"]), ("pressed", c["active"])],
+              lightcolor=[("active", c["active"]), ("pressed", c["active"])],
+              darkcolor=[("active", c["active"]), ("pressed", c["active"])])
 
     style.configure("TPanedwindow", background=c["bg"])
     style.configure("Sash", sashthickness=4, gripcount=0, background=c["bg"],
@@ -546,7 +555,9 @@ class BlackFontEditor:
         self.font: BlackFont | None = None
         self.image: Image.Image | None = None
         self.photo: ImageTk.PhotoImage | None = None
-        self._tex_photo_zoom = None
+        self._tex_photo_zoom = None          # (zoom, contrast) cache key for PhotoImage
+        self._preview_base = None           # (contrast, Image) native-size enhanced preview
+        self._contrast_after_id = None      # debounce handle for the contrast slider
         self.zoom = DEFAULT_ZOOM
         self.selected_index: int | None = None
         self.drag_mode: str | None = None
@@ -752,10 +763,28 @@ class BlackFontEditor:
         self.bg_var = tk.StringVar(value="#000000")
         self.bg_enabled = tk.BooleanVar(value=True)
         self.show_border_var = tk.BooleanVar(value=False)
+        self.preview_contrast = tk.DoubleVar(value=1.0)
 
         ttk.Checkbutton(bg_frame, text="Show black background", variable=self.bg_enabled, command=self.on_bg_color_changed).pack(fill=tk.X, padx=2, pady=(2, 0))
 
         ttk.Checkbutton(bg_frame, text="Show texture border", variable=self.show_border_var, command=self.redraw).pack(fill=tk.X, padx=2, pady=(0, 2))
+
+        # Preview-only contrast (does not alter the .bin / self.image)
+        contrast_hdr = ttk.Frame(bg_frame)
+        contrast_hdr.pack(fill=tk.X, padx=2, pady=0)
+        ttk.Label(contrast_hdr, text="Preview contrast:").pack(side=tk.LEFT)
+        self.contrast_value_label = ttk.Label(contrast_hdr, text="1.00")
+        self.contrast_value_label.pack(side=tk.RIGHT)
+
+        contrast_row = ttk.Frame(bg_frame)
+        contrast_row.pack(fill=tk.X, padx=2, pady=(0, 2))
+        self.contrast_scale = ttk.Scale(
+            contrast_row, from_=0.30, to=1.70, orient=tk.HORIZONTAL,
+            variable=self.preview_contrast, command=self.on_preview_contrast_changed,
+        )
+        self.contrast_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        ttk.Button(contrast_row, text="Reset", command=self.reset_preview_contrast,
+                   padding=-3).pack(side=tk.RIGHT)
 
         help_frame = ttk.LabelFrame(parent, text="Help")
         help_frame.pack(fill=tk.BOTH, expand=True, padx=(0, 4), pady=4)
@@ -777,13 +806,14 @@ class BlackFontEditor:
             "**LMB** on glyph on texture - select.\n\n"
             "**Drag corner handle** - resize rectangle.\n"
             "**Drag glyph** - move rectangle.\n\n"
-            "Character is the glyph's 16-bit character code; type one character, U+XXXX, 0xXXXX or a decimal value.\n\n"
+            "Character is the glyph's character: just type the letter itself (А, Б, ё, ...). Invisible codes (NUL, space, NBSP) are shown and can be entered as U+XXXX.\n\n"
             "Pixel X/Y, Cell Width/Height, Offset X/Y and Advance Width are shown in atlas pixels. "
             "Enable **Display normalized UV** to view and edit the original normalized float values instead.\n\n"
             "**Import texture** replaces the DXT3 atlas from a PNG or DDS. "
             "Small.bin expects 128x256, Big.bin expects 256x256; other sizes can be nearest-neighbour resized. "
             "DDS: DXT1/3/5 and 32-bit RGBA. Glyph UV metrics stay valid because dimensions are not changed.\n\n"
             "**Export texture** saves the atlas as a PNG.\n\n"
+            "**Preview contrast** (Texture Background panel) softens or boosts the canvas view only — the .bin and exported PNG stay unchanged.\n\n"
             "The editor preserves the raw file, pointer table, texture header and compressed atlas. Save changes only after testing in-game.\n\n"
             "Code updates change the documented U16 glyph-code field. The 128-entry pointer table is shown for inspection and is deliberately not rebuilt automatically."
         )
@@ -794,6 +824,68 @@ class BlackFontEditor:
 
     def on_bg_color_changed(self, _event=None):
         self.redraw()
+
+    def _preview_contrast_value(self) -> float:
+        try:
+            return float(self.preview_contrast.get())
+        except (tk.TclError, ValueError):
+            return 1.0
+
+    def on_preview_contrast_changed(self, _value=None) -> None:
+        """Slider callback: update the label immediately, debounce the heavy rebuild."""
+        c = self._preview_contrast_value()
+        self.contrast_value_label.configure(text=f"{c:.2f}")
+        if self._contrast_after_id is not None:
+            self.root.after_cancel(self._contrast_after_id)
+        # ~40 ms debounce — enough to skip intermediate drag events without feeling laggy
+        self._contrast_after_id = self.root.after(40, self._apply_preview_contrast)
+
+    def reset_preview_contrast(self) -> None:
+        if self._contrast_after_id is not None:
+            self.root.after_cancel(self._contrast_after_id)
+            self._contrast_after_id = None
+        self.preview_contrast.set(1.0)
+        self.contrast_value_label.configure(text="1.00")
+        self._apply_preview_contrast()
+
+    def _apply_preview_contrast(self) -> None:
+        """Rebuild the atlas PhotoImage and swap it on the canvas (glyphs stay put)."""
+        self._contrast_after_id = None
+        if not self.image or not self.font:
+            return
+        self._ensure_atlas_photo()
+        items = self.canvas.find_withtag("atlas")
+        if items:
+            self.canvas.itemconfig(items[0], image=self.photo)
+        else:
+            self.redraw()
+
+    def _invalidate_preview_cache(self) -> None:
+        self._tex_photo_zoom = None
+        self._preview_base = None
+
+    def _ensure_atlas_photo(self) -> None:
+        """Build (or reuse) the zoomed PhotoImage for the current contrast setting."""
+        if self.image is None:
+            return
+        z = self.zoom
+        contrast = round(self._preview_contrast_value(), 2)
+        cache_key = (z, contrast)
+        if self._tex_photo_zoom == cache_key and self.photo is not None:
+            return
+        # Native-size enhanced image is cached so zoom changes don't re-run Contrast.
+        if self._preview_base is None or self._preview_base[0] != contrast:
+            if abs(contrast - 1.0) > 0.01:
+                base = ImageEnhance.Contrast(self.image).enhance(contrast)
+            else:
+                base = self.image
+            self._preview_base = (contrast, base)
+        else:
+            base = self._preview_base[1]
+        w, h = self.image.size
+        scaled = base.resize((w * z, h * z), Image.Resampling.NEAREST)
+        self.photo = ImageTk.PhotoImage(scaled)
+        self._tex_photo_zoom = cache_key
 
     def on_uv_display_changed(self) -> None:
         """Switch property fields between atlas pixels and stored UV floats."""
@@ -887,7 +979,7 @@ class BlackFontEditor:
         self.font, self.image, self.dirty = font, image, False
         if not keep_selection:
             self.selected_index = None
-        self._tex_photo_zoom = None
+        self._invalidate_preview_cache()
         if self.zoom > self._max_zoom():
             self.zoom = self._max_zoom()
             self.zoom_var.set(self.zoom)
@@ -933,9 +1025,10 @@ class BlackFontEditor:
         glyph = self.font.glyph(index)
         values = self.property_vars
         values["record"].set(f"#{index} at 0x{glyph.offset:X}")
-        # Keep the editor field unambiguous: it is the on-disk U16 character
-        # code.  Only the navigation list uses the rendered character.
-        values["character"].set(f"U+{glyph.code:04X}")
+        # The field shows the glyph as a plain character (А, Б, ...).  Codes that
+        # cannot be typed or seen as a single character (NUL, space, NBSP,
+        # control codes, surrogates) fall back to U+XXXX so they stay unambiguous.
+        values["character"].set(self.code_to_text(glyph.code))
         if self.uv_mode_var.get():
             display_values = (glyph.u, glyph.v, glyph.width, glyph.height,
                               glyph.bearing_x, glyph.bearing_y, glyph.advance)
@@ -980,18 +1073,31 @@ class BlackFontEditor:
         return rect
 
     @staticmethod
+    def code_to_text(code: int) -> str:
+        """Text for the Character field: the character itself when it is visible."""
+        if 0 <= code <= 0xFFFF:
+            character = chr(code)
+            if character.isprintable() and not character.isspace():
+                return character
+        return f"U+{code:04X}"
+
+    @staticmethod
     def parse_code(value: str) -> int:
-        text = value.strip()
-        if text.upper().startswith("U+"):
-            code = int(text[2:], 16)
-        elif text.lower().startswith("0x"):
-            code = int(text, 16)
-        elif len(text) == 1:
-            code = ord(text)
+        # A single character is taken literally (a lone space is a valid character too).
+        if len(value) == 1 and value not in "\r\n\t":
+            code = ord(value)
         else:
-            code = int(text, 10)
+            text = value.strip()
+            if len(text) == 1:
+                code = ord(text)
+            elif text.upper().startswith("U+"):
+                code = int(text[2:], 16)
+            elif text.lower().startswith("0x"):
+                code = int(text, 16)
+            else:
+                code = int(text, 10)
         if not 0 <= code <= 0xFFFF:
-            raise ValueError("Code must fit in U+0000…U+FFFF")
+            raise ValueError("Character must be a single character from U+0000…U+FFFF")
         return code
 
     def apply_properties(self) -> None:
@@ -1053,10 +1159,7 @@ class BlackFontEditor:
             return
         z = self.zoom
         w, h = self.image.size
-        if self._tex_photo_zoom != z:
-            scaled = self.image.resize((w * z, h * z), Image.Resampling.NEAREST)
-            self.photo = ImageTk.PhotoImage(scaled)
-            self._tex_photo_zoom = z
+        self._ensure_atlas_photo()
 
         # Draw background if enabled
         if self.bg_enabled.get():
@@ -1294,7 +1397,7 @@ class BlackFontEditor:
         except Exception as exc:
             self._report_unexpected_error("Critical import error", exc)
             return False
-        self._tex_photo_zoom = None
+        self._invalidate_preview_cache()
         self.redraw()
         self._mark_modified(f"Imported {source} -> DXT3 {tw}x{th}{note}")
         return True
