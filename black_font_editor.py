@@ -25,7 +25,7 @@ import tkinter.font as tkfont
 
 from PIL import Image, ImageTk, ImageEnhance
 
-from black_font_format import BlackFont, Glyph, FORMAT_NAMES
+from black_font_format import BlackFont, Glyph, FORMAT_NAMES, display_character
 from black_texture import load_dds_image
 
 
@@ -814,8 +814,12 @@ class BlackFontEditor:
             "DDS: DXT1/3/5 and 32-bit RGBA. Glyph UV metrics stay valid because dimensions are not changed.\n\n"
             "**Export texture** saves the atlas as a PNG.\n\n"
             "**Preview contrast** (Texture Background panel) softens or boosts the canvas view only — the .bin and exported PNG stay unchanged.\n\n"
-            "The editor preserves the raw file, pointer table, texture header and compressed atlas. Save changes only after testing in-game.\n\n"
-            "Code updates change the documented U16 glyph-code field. The 128-entry pointer table is shown for inspection and is deliberately not rebuilt automatically."
+            "The editor preserves the raw file, texture header and compressed atlas. Save changes only after testing in-game.\n\n"
+            "The game finds a character by starting at pointer-table entry (code & 0x7F) and walking the glyph records forward until the code matches. "
+            "A glyph whose record lies in front of its entry is never found and is drawn as the empty box. "
+            "The editor therefore repairs the pointer table automatically (after a code change, when a file is opened and when it is saved): "
+            "entries are only moved back to the first matching record, entries that already work are not touched, and nothing else in the file changes. "
+            "The Pointers tab shows the result; row 000 is the end record where the game's search stops."
         )
         help_text.tag_configure("bold", font=self.bold_font)
         help_text.config(state=tk.NORMAL)
@@ -993,24 +997,49 @@ class BlackFontEditor:
         self.glyph_list.delete(0, tk.END)
         for glyph in font.glyphs():
             self.glyph_list.insert(tk.END, glyph.label)
-        self._refresh_pointer_list()
+        self.refresh_pointer_list()
         if keep_selection:
             self.select_glyph(self.selected_index)      # also redraws the canvas
         else:
             self.clear_properties()
             self.redraw()
         self.status_var.set(f"Loaded {font.path} — {font.glyph_count} physical glyph records")
+        lost = font.unreachable_glyphs()
+        if lost:
+            # The game would draw these characters as the "no glyph" box.  Repair the table now;
+            # the file on disk stays as it was until the user saves.
+            changes = self.sync_pointer_table()
+            names = " ".join(display_character(g.code) for g in lost[:40])
+            self.info_var.set(self.info_var.get() +
+                              f"\nGame lookup: {len(lost)} character(s) were not findable ({names}"
+                              f"{' …' if len(lost) > 40 else ''}); pointer table repaired "
+                              f"({len(changes)} entries), save to keep it")
+            self._mark_modified(f"Pointer table repaired for {len(lost)} unreachable glyph(s)")
+        else:
+            self.info_var.set(self.info_var.get() + "\nGame lookup: OK (every glyph is findable)")
         return True
 
-    def _refresh_pointer_list(self) -> None:
-        """Rebuild the pointer table list from the current font data."""
-        if not self.font:
-            return
+    def refresh_pointer_list(self) -> None:
+        """Show the pointer table.  Row 0 is the "no glyph" record the game's search stops at;
+        row n >= 1 is the start of the search for characters whose (code & 0x7F) is n - 1."""
+        font = self.font
         self.pointer_list.delete(0, tk.END)
-        for i in range(128):
-            raw, target = self.font.pointer(i), self.font.pointer_target(i)
+        if font is None:
+            return
+        for i in range(129):
+            raw, target = font.pointer(i), font.pointer_target(i)
             suffix = f"glyph {target:03d}" if target is not None else "outside glyph records"
-            self.pointer_list.insert(tk.END, f"{i:03d}: 0x{raw:04X}  → {suffix}")
+            role = "end   " if i == 0 else f"slot {i - 1:02X}"
+            self.pointer_list.insert(tk.END, f"{i:03d} {role}: 0x{raw:04X}  → {suffix}")
+
+    def sync_pointer_table(self) -> list[tuple[int, int | None, int]]:
+        """Keep the pointer table in step with the glyph codes so the game can find every glyph."""
+        if self.font is None:
+            return []
+        changes = self.font.rebuild_pointer_table()
+        if changes:
+            self.refresh_pointer_list()
+        return changes
 
     def select_from_list(self, _event=None) -> None:
         selection = self.glyph_list.curselection()
@@ -1139,7 +1168,9 @@ class BlackFontEditor:
         self.glyph_list.delete(self.selected_index)
         self.glyph_list.insert(self.selected_index, updated.label)
         self.select_glyph(updated.index)
-        self._mark_modified(f"Glyph #{updated.index} changed")
+        moved = self.sync_pointer_table()
+        note = f"; pointer table updated ({len(moved)} entr{'y' if len(moved) == 1 else 'ies'})" if moved else ""
+        self._mark_modified(f"Glyph #{updated.index} changed{note}")
 
     def _max_zoom(self) -> int:
         """Highest zoom whose scaled texture stays within MAX_DISPLAY_PIXELS."""
@@ -1410,14 +1441,6 @@ class BlackFontEditor:
 
     # ---- saving ------------------------------------------------------------
 
-    def _fix_pointers_before_save(self) -> str:
-        """Run pointer-table repair and refresh the UI list. Returns a short status note."""
-        log = self.font.fix_pointers()
-        if log:
-            self._refresh_pointer_list()
-            return f" (fixed {len(log)} pointer table entr{'y' if len(log) == 1 else 'ies'})"
-        return ""
-
     def save(self) -> bool:
         if not self.font:
             messagebox.showinfo("No font", "Open a BLACK bitmap font first.")
@@ -1430,14 +1453,14 @@ class BlackFontEditor:
                 f"Overwrite original file?\n{self.font.path}\n\n"
                 "Making a backup copy first is recommended."):
             return False
+        self.sync_pointer_table()
         try:
-            note = self._fix_pointers_before_save()
             self.font.save(self.font.path)
         except OSError as exc:
             messagebox.showerror("Save error", str(exc))
             return False
         self.dirty = False
-        self.status_var.set(f"Saved {self.font.path}{note}")
+        self.status_var.set(f"Saved {self.font.path}")
         return True
 
     def save_as(self) -> bool:
@@ -1448,8 +1471,8 @@ class BlackFontEditor:
                                             filetypes=[("BIN files", "*.bin *.BIN"), ("All files", "*")])
         if not path:
             return False
+        self.sync_pointer_table()
         try:
-            note = self._fix_pointers_before_save()
             self.font.save(path)
         except OSError as exc:
             messagebox.showerror("Save error", str(exc))
@@ -1457,7 +1480,7 @@ class BlackFontEditor:
         self.font.path = Path(path)             # later "Save (overwrite)" targets this file
         self.dirty = False
         self._update_title()
-        self.status_var.set(f"Saved {path}{note}")
+        self.status_var.set(f"Saved {path}")
         return True
 
     def close(self) -> None:
