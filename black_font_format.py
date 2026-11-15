@@ -3,9 +3,14 @@ black_font_format.py - reader/patcher for the BLACK (Xbox) bitmap-font files
 Big.bin and Small.bin ("4.1v").
 
 Field edits are applied in place to the in-memory file image; everything outside
-the touched glyph records stays byte-identical, and the texture header, the
-pointer table and any unrecognised bytes are preserved.  The atlas itself is a
-single DXT3 / DXT5 level (see black_texture.py).
+the touched glyph records stays byte-identical, and the texture header and any
+unrecognised bytes are preserved.  The atlas itself is a single DXT3 / DXT5 level
+(see black_texture.py).
+
+The 128-entry glyph-pointer table is the one thing that is kept in step with the
+glyph codes (see rebuild_pointer_table): the game finds a character by starting at
+table[code & 0x7F] and walking the glyph records forward, so a glyph whose record
+lies in front of its table entry is never found and is drawn as the "no glyph" box.
 """
 
 from __future__ import annotations
@@ -136,6 +141,68 @@ class BlackFont:
         delta = target - GLYPH_RECORDS
         return delta // GLYPH_STRIDE if delta % GLYPH_STRIDE == 0 else None
 
+    # ---- how the game looks a character up ----------------------------------
+    # BLACK (src/recomp_manual.c, black_direct_font):
+    #     glyph = table[ch & 0x7F]            # u32 at 0x20 + (ch & 0x7F) * 4
+    #     while glyph.code != ch and glyph != end:
+    #         glyph += 0x28                   # forward only
+    # `end` is the u32 at 0x1C: the "no glyph" record (code 0, the last record).
+
+    @property
+    def end_index(self) -> int | None:
+        """Index of the "no glyph" record the game's search stops at (u32 at 0x1C)."""
+        target = self.pointer_target(0)
+        return target
+
+    def find_glyph(self, code: int) -> int | None:
+        """Record index the game finds for *code*, or None if its search misses it."""
+        end = self.u32(GLYPH_TABLE)
+        glyph = self.u32(GLYPH_TABLE + 4 + (code & 0x7F) * 4)
+        for _ in range(512):
+            delta = glyph - GLYPH_RECORDS
+            if delta < 0 or delta % GLYPH_STRIDE:
+                return None
+            index = delta // GLYPH_STRIDE
+            if index >= self.glyph_count:
+                return None
+            if self.glyph(index).code == code:
+                return index
+            if glyph == end:
+                return None
+            glyph += GLYPH_STRIDE
+        return None
+
+    def unreachable_glyphs(self) -> list[Glyph]:
+        """Records with a character code that the game's search would not find."""
+        return [g for g in self.glyphs() if g.code and self.find_glyph(g.code) != g.index]
+
+    def rebuild_pointer_table(self) -> list[tuple[int, int | None, int]]:
+        """Move pointer-table entries back so that every glyph record can be found.
+
+        For each slot (code & 0x7F) the entry is pointed at the earliest record with a
+        matching code when that record lies in front of the current entry (or the entry
+        is the "no glyph" record / invalid).  Entries that already work are left
+        alone, so an untouched stock font is not changed at all.  Only the 4-byte
+        table entries are written.  Returns [(slot, old_record or None, new_record)].
+        """
+        end_index = self.end_index
+        changes: list[tuple[int, int | None, int]] = []
+        earliest: dict[int, int] = {}
+        for g in self.glyphs():
+            if g.code and g.index != end_index:
+                earliest.setdefault(g.code & 0x7F, g.index)
+        for slot, first in sorted(earliest.items()):
+            offset = GLYPH_TABLE + 4 + slot * 4
+            current = self.u32(offset)
+            delta = current - GLYPH_RECORDS
+            valid = (delta >= 0 and delta % GLYPH_STRIDE == 0
+                     and end_index is not None and delta // GLYPH_STRIDE < end_index)
+            old = delta // GLYPH_STRIDE if valid else None
+            if old is None or first < old:
+                struct.pack_into("<I", self.data, offset, GLYPH_RECORDS + first * GLYPH_STRIDE)
+                changes.append((slot, old, first))
+        return changes
+
     def write_glyph(self, glyph: Glyph) -> None:
         struct.pack_into("<7f", self.data, glyph.offset, glyph.u, glyph.v, glyph.width,
                          glyph.height, glyph.bearing_x, glyph.bearing_y, glyph.advance)
@@ -180,44 +247,6 @@ class BlackFont:
         if end > len(self.data):
             self.data.extend(b"\x00" * (end - len(self.data)))
         self.data[self.pixel_offset:end] = payload
-
-    def fix_pointers(self) -> list[str]:
-        """Rebuild the 128-entry glyph pointer table so the game can find every glyph.
-
-        The game looks up a character as:
-            start = u32(font + 0x20 + (ch & 0x7F) * 4)
-            then walks forward by GLYPH_STRIDE until code matches or the
-            sentinel at u32(font + 0x1C) is reached.
-        A glyph is reachable only if its record lies at or after the table entry
-        for (code & 0x7F).  This method moves each table slot back to the
-        earliest matching record when that record is before the current pointer.
-        Only the 4-byte table entries are changed; glyph data is left alone.
-        Returns a list of human-readable change descriptions (empty if nothing
-        needed fixing).
-        """
-        end = self.u32(0x1C)
-        end_index = (end - GLYPH_RECORDS) // GLYPH_STRIDE if end >= GLYPH_RECORDS else -1
-        log: list[str] = []
-        for slot in range(128):
-            wanted = [
-                g.index for g in self.glyphs()
-                if g.code and g.index != end_index and (g.code & 0x7F) == slot
-            ]
-            if not wanted:
-                continue
-            offset = 0x20 + slot * 4
-            current = self.u32(offset)
-            current_index = (current - GLYPH_RECORDS) // GLYPH_STRIDE
-            valid = (
-                GLYPH_RECORDS <= current < end
-                and (current - GLYPH_RECORDS) % GLYPH_STRIDE == 0
-            )
-            first = min(wanted)
-            if not valid or first < current_index:
-                struct.pack_into("<I", self.data, offset, GLYPH_RECORDS + first * GLYPH_STRIDE)
-                old = current_index if valid else "end/none"
-                log.append(f"slot 0x{slot:02X}: record {old} -> {first}")
-        return log
 
     def save(self, path: os.PathLike[str] | str) -> None:
         Path(path).write_bytes(self.data)
